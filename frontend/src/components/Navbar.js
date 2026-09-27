@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { connectWallet, getCurrentAccount } from "../utils/wallet";
+import {
+  connectWallet,
+  getCurrentAccount,
+  disconnectWallet,
+} from "../utils/wallet";
 
 export default function Navbar() {
   const [account, setAccount] = useState("");
@@ -12,26 +16,27 @@ export default function Navbar() {
   const location = useLocation();
 
   useEffect(() => {
-    const handleAccountsChanged = (accounts) => {
-      setAccount(accounts[0] || "");
-    };
-
-    getCurrentAccount().then((addr) => {
-      if (addr) setAccount(addr);
-    });
+    const manuallyDisconnected = localStorage.getItem("wallet_disconnected");
+    if (!manuallyDisconnected) {
+      getCurrentAccount().then((addr) => {
+        if (addr) setAccount(addr);
+      });
+    }
 
     if (window.ethereum) {
-      window.ethereum.on("accountsChanged", handleAccountsChanged);
+      window.ethereum.on("accountsChanged", (accounts) => {
+        if (accounts && accounts.length > 0) {
+          setAccount(accounts[0]);
+          localStorage.removeItem("wallet_disconnected");
+        } else {
+          setAccount("");
+        }
+      });
     }
 
     const handleScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      if (window.ethereum) {
-        window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
-      }
-    };
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   // Close dropdown when clicking outside
@@ -48,6 +53,7 @@ export default function Navbar() {
   async function handleConnect() {
     try {
       setLoading(true);
+      localStorage.removeItem("wallet_disconnected");
       const { address } = await connectWallet();
       setAccount(address);
     } catch (e) {
@@ -57,13 +63,17 @@ export default function Navbar() {
     }
   }
 
-  function handleDisconnect() {
-    setAccount("");
-    setDropdownOpen(false);
-    // MetaMask se disconnect karne ke liye — local state clear
-    // Note: MetaMask mein "real" disconnect nahi hota, but wallet state clear ho jata hai
-    if (window.ethereum && window.ethereum.removeAllListeners) {
-      // optional: remove listeners
+  async function handleDisconnect() {
+    try {
+      await disconnectWallet();
+      setAccount("");
+      setDropdownOpen(false);
+      setTimeout(() => window.location.reload(), 300);
+    } catch (error) {
+      console.error("Disconnect failed:", error);
+      setAccount("");
+      setDropdownOpen(false);
+      localStorage.setItem("wallet_disconnected", "true");
     }
   }
 
@@ -80,9 +90,10 @@ export default function Navbar() {
   const isActive = (path) => location.pathname === path;
 
   const navLinks = [
+    { to: "/dashboard", label: "Dashboard" },
     { to: "/university", label: "University" },
     { to: "/student", label: "Student" },
-    { to: "/verify", label: "Verify" }
+    { to: "/verify", label: "Verify" },
   ];
 
   return (
@@ -126,7 +137,9 @@ export default function Navbar() {
           {/* Wallet Button — with Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
-              onClick={() => (account ? setDropdownOpen(!dropdownOpen) : handleConnect())}
+              onClick={() =>
+                account ? setDropdownOpen(!dropdownOpen) : handleConnect()
+              }
               disabled={loading}
               className={`relative px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 shadow-md hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed flex items-center gap-2 ${
                 account
@@ -196,7 +209,9 @@ export default function Navbar() {
                         {copied ? "Copied!" : "Copy Address"}
                       </div>
                       <div className="text-xs text-slate-500">
-                        {copied ? "Address copied to clipboard" : "Copy wallet address"}
+                        {copied
+                          ? "Address copied to clipboard"
+                          : "Copy wallet address"}
                       </div>
                     </div>
                   </button>

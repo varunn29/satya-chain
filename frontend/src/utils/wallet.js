@@ -6,11 +6,11 @@ export async function connectWallet() {
     throw new Error("MetaMask install karo!");
   }
 
-  // Force MetaMask popup
+  // ⭐ Force MetaMask popup har baar
   try {
     await window.ethereum.request({
       method: "wallet_requestPermissions",
-      params: [{ eth_accounts: {} }]
+      params: [{ eth_accounts: {} }],
     });
   } catch (err) {
     if (err.code === 4001) {
@@ -23,16 +23,14 @@ export async function connectWallet() {
   const network = await provider.getNetwork();
 
   // Network check — Amoy pe switch karo agar nahi hai
-  const targetChainIdDecimal = parseInt(NETWORK.chainId, 16); // 0x13882 → 80002
-  
-  if (Number(network.chainId) !== targetChainIdDecimal) {
+  const targetChainId = "0x13882";
+  if (network.chainId.toString() !== parseInt(targetChainId, 16).toString()) {
     try {
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: NETWORK.chainId }], // "0x13882"
+        params: [{ chainId: NETWORK.chainId }],
       });
     } catch (switchError) {
-      // Chain add nahi hai toh add karo
       if (switchError.code === 4902) {
         await window.ethereum.request({
           method: "wallet_addEthereumChain",
@@ -53,9 +51,37 @@ export async function connectWallet() {
 export async function getCurrentAccount() {
   if (!window.ethereum) return null;
   try {
+    // ⭐ Check karo ki user ne manually disconnect kiya hai
+    const manuallyDisconnected = localStorage.getItem("wallet_disconnected");
+    if (manuallyDisconnected === "true") return null;
+
     const accounts = await window.ethereum.request({ method: "eth_accounts" });
     return accounts[0] || null;
   } catch {
     return null;
+  }
+}
+
+export async function disconnectWallet() {
+  try {
+    // ⭐ MetaMask se permissions revoke karo (agar supported hai)
+    if (window.ethereum && window.ethereum.request) {
+      try {
+        await window.ethereum.request({
+          method: "wallet_revokePermissions",
+          params: [{ eth_accounts: {} }],
+        });
+      } catch (err) {
+        console.warn("wallet_revokePermissions not supported:", err.message);
+      }
+    }
+
+    // ⭐ Frontend flag set karo
+    localStorage.setItem("wallet_disconnected", "true");
+
+    return true;
+  } catch (error) {
+    console.error("Disconnect error:", error);
+    return false;
   }
 }

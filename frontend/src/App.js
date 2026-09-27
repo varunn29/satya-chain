@@ -4,6 +4,7 @@ import Footer from "./components/Footer";
 import StarField from "./components/StarField";
 import GlowOrbs from "./components/GlowOrbs";
 import Home from "./pages/Home";
+import Dashboard from "./pages/Dashboard";
 import University from "./pages/University";
 import Student from "./pages/Student";
 import Verify from "./pages/Verify";
@@ -19,6 +20,7 @@ export default function App() {
           <main className="flex-1">
             <Routes>
               <Route path="/" element={<Home />} />
+              <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/university" element={<University />} />
               <Route path="/student" element={<Student />} />
               <Route path="/verify" element={<Verify />} />

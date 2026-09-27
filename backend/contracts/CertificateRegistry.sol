@@ -2,78 +2,98 @@
 pragma solidity ^0.8.20;
 
 contract CertificateRegistry {
-	address public admin;
-	uint256 public total;
+    address public admin;
 
-	struct Cert {
-		string name;
-		string course;
-		string ipfs;
-		uint256 date;
-		bool valid;
-	}
+    struct Certificate {
+        string studentName;
+        string course;
+        string ipfs;
+        uint256 date;
+        bool valid;
+    }
 
-	mapping(string => Cert) public certs;
-	mapping(address => string[]) public studentCerts;
+    mapping(string => Certificate) public certificates;
+    mapping(address => string[]) public studentCerts;
+    string[] public allIds;
+    uint256 public total;
+    uint256 public revokedCount;
 
-	event Issued(
-		string id,
-		string name,
-		string ipfs,
-		uint256 date,
-		address studentWallet
-	);
-	event Revoked(string id, uint256 date);
+    event Issued(
+        string id,
+        string name,
+        string ipfs,
+        uint256 date,
+        address studentWallet
+    );
 
-	modifier onlyAdmin() {
-		require(msg.sender == admin, "Not admin");
-		_;
-	}
+    event Revoked(string id, uint256 date);
 
-	constructor() {
-		admin = msg.sender;
-	}
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "Not admin");
+        _;
+    }
 
-	function issue(
-		string memory id,
-		string memory name,
-		string memory course,
-		string memory ipfs,
-		address studentWallet
-	) public onlyAdmin {
-		require(!certs[id].valid, "ID exists");
-		require(bytes(id).length > 0, "ID required");
-		require(bytes(name).length > 0, "Name required");
-		require(bytes(course).length > 0, "Course required");
-		require(bytes(ipfs).length > 0, "IPFS required");
-		require(studentWallet != address(0), "Student wallet required");
+    constructor() {
+        admin = msg.sender;
+    }
 
-		certs[id] = Cert(name, course, ipfs, block.timestamp, true);
-		studentCerts[studentWallet].push(id);
-		total++;
-		emit Issued(id, name, ipfs, block.timestamp, studentWallet);
-	}
+    function issue(
+        string memory id,
+        string memory name,
+        string memory course,
+        string memory ipfs,
+        address studentWallet
+    ) public onlyAdmin {
+        require(bytes(id).length > 0, "ID required");
+        require(bytes(name).length > 0, "Name required");
+        require(!certificates[id].valid, "ID exists");
 
-	function getCertificatesByStudent(address student)
-		public
-		view
-		returns (string[] memory)
-	{
-		return studentCerts[student];
-	}
+        certificates[id] = Certificate({
+            studentName: name,
+            course: course,
+            ipfs: ipfs,
+            date: block.timestamp,
+            valid: true
+        });
 
-	function verify(string memory id)
-		public
-		view
-		returns (string memory, string memory, string memory, uint256, bool)
-	{
-		Cert memory c = certs[id];
-		return (c.name, c.course, c.ipfs, c.date, c.valid);
-	}
+        allIds.push(id);
+        studentCerts[studentWallet].push(id);
+        total++;
 
-	function revoke(string memory id) public onlyAdmin {
-		require(certs[id].valid, "Not found");
-		certs[id].valid = false;
-		emit Revoked(id, block.timestamp);
-	}
+        emit Issued(id, name, ipfs, block.timestamp, studentWallet);
+    }
+
+    function verify(string memory id)
+        public
+        view
+        returns (
+            string memory,
+            string memory,
+            string memory,
+            uint256,
+            bool
+        )
+    {
+        Certificate memory c = certificates[id];
+        return (c.studentName, c.course, c.ipfs, c.date, c.valid);
+    }
+
+    function revoke(string memory id) public onlyAdmin {
+        require(certificates[id].valid, "Not found or already revoked");
+        certificates[id].valid = false;
+        revokedCount++;
+        emit Revoked(id, block.timestamp);
+    }
+
+    function getAllIds() public view returns (string[] memory) {
+        return allIds;
+    }
+
+    function getCertificatesByStudent(address student)
+        public
+        view
+        returns (string[] memory)
+    {
+        return studentCerts[student];
+    }
 }
