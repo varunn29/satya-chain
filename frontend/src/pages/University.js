@@ -55,6 +55,7 @@ export default function University() {
         form.studentWallet
       );
 
+      // ✅ txHash ab string hai — safe to render
       setLastCert({ ...form, ipfsHash, txHash });
       setStatus({
         type: "success",
@@ -163,13 +164,13 @@ export default function University() {
 
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-2">
-            University Wallet Address <span className="text-rose-500">*</span>
+            Student Wallet Address <span className="text-rose-500">*</span>
           </label>
           <input
             type="text"
             value={form.studentWallet}
             onChange={(e) => updateField("studentWallet", e.target.value)}
-            placeholder="University Wallet Address (0x...)"
+            placeholder="Student Wallet Address (0x...)"
             className="input-field"
             disabled={loading}
           />

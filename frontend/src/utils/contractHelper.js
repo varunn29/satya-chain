@@ -67,7 +67,7 @@ export async function issueCertificate(
       studentWallet
     );
     await tx.wait();
-    return tx;
+    return tx.hash; // ✅ FIX: hash return karo, object nahi
   } catch (error) {
     throw new Error(`Failed to issue certificate: ${getErrorMessage(error)}`);
   }
@@ -142,7 +142,7 @@ export async function revokeCertificate(certId) {
     const contract = await getContract();
     const tx = await contract.revoke(certId);
     await tx.wait();
-    return tx.hash;
+    return tx.hash; // ✅ Already string return kar raha hai
   } catch (error) {
     throw new Error(`Failed to revoke certificate: ${getErrorMessage(error)}`);
   }
