@@ -14,7 +14,11 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "dotenv": "^17.4.2"
+    "@orbinum/proof-generator": "^7.1.1",
+    "@zk-kit/artifacts": "^2.0.1",
+    "@zk-kit/poseidon-proof": "^1.0.0-beta.6",
+    "dotenv": "^17.4.2",
+    "snarkjs": "^0.7.6"
   },
   "directories": {
     "test": "test"

@@ -48,3 +48,8 @@ Thumbs.db
 # ==============================
 *.tmp
 *.temp
+circom-src/
+backend/poseidon-2.wasm
+backend/poseidon-2.zkey
+backend/*.wasm
+backend/*.zkey
