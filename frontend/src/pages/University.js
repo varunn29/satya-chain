@@ -5,8 +5,14 @@ import {
   issueGovernmentID,
   issueHealthcareRecord,
   issueLandRecord,
+  mintCertificateNFT,
+  mintLandDeedNFT,
+  mintHealthRecordNFT,
+  getNFTTokenIdByCertId,
+  getLandDeedTokenIdByDeedId,
+  getHealthTokenIdByRecordId,
 } from "../utils/contractHelper";
-import { uploadToIPFS } from "../utils/ipfs";
+import { uploadToIPFS, uploadJSONToIPFS } from "../utils/ipfs";
 import { generateSectorPDF, downloadPDF } from "../utils/pdfGenerator";
 
 // ============================================
@@ -131,7 +137,6 @@ export default function University() {
 
       setStatus({ type: "info", msg: "📄 Generating PDF..." });
 
-      // Prepare PDF data
       const pdfData = {
         certId: form.certId,
         studentName: form.studentName,
@@ -142,11 +147,10 @@ export default function University() {
         university: form.university,
       };
 
-      // ⭐ Sector-specific PDF
       const pdfBlob = await generateSectorPDF(sector, pdfData);
       downloadPDF(pdfBlob, `${form.certId}.pdf`);
 
-      setStatus({ type: "info", msg: "☁️ Uploading to IPFS..." });
+      setStatus({ type: "info", msg: "☁️ Uploading PDF to IPFS..." });
       const pdfFile = new File([pdfBlob], `${form.certId}.pdf`, {
         type: "application/pdf",
       });
@@ -191,11 +195,146 @@ export default function University() {
         );
       }
 
-      setLastCert({ ...form, ipfsHash, txHash, sector });
-      setStatus({
-        type: "success",
-        msg: `✅ ${config.name} record issued successfully!`,
+      // ============================================
+      // ⭐ NFT MINTING
+      // ============================================
+      let nftTokenId = null;
+      let nftTxHash = null;
+      let nftMetadataURI = null;
+      let nftKind = null;
+
+      // ---- Education: Soulbound Certificate ----
+      if (sector === "education") {
+        try {
+          setStatus({ type: "info", msg: "🎨 Minting Soulbound Certificate NFT..." });
+
+          const nftMetadata = {
+            name: `${form.course} Certificate - ${form.studentName}`,
+            description: `Blockchain-verified certificate from ${form.university}. Soulbound — non-transferable.`,
+            image: `ipfs://${ipfsHash}`,
+            attributes: [
+              { trait_type: "Type", value: "Soulbound Certificate" },
+              { trait_type: "Student Name", value: form.studentName },
+              { trait_type: "Course", value: form.course },
+              { trait_type: "University", value: form.university },
+              { trait_type: "Issue Date", value: new Date().toISOString().split("T")[0] },
+              { trait_type: "Certificate ID", value: form.certId },
+              { trait_type: "PDF", value: `ipfs://${ipfsHash}` },
+            ],
+          };
+
+          nftMetadataURI = await uploadJSONToIPFS(nftMetadata, `${form.certId}-metadata.json`);
+          nftTxHash = await mintCertificateNFT(form.wallet, form.certId, nftMetadataURI);
+          try {
+            nftTokenId = await getNFTTokenIdByCertId(form.certId);
+          } catch {
+            nftTokenId = "?";
+          }
+          nftKind = "soulbound";
+        } catch (nftError) {
+          console.error("NFT minting failed:", nftError);
+          setStatus({
+            type: "info",
+            msg: `✅ Certificate issued, but NFT minting failed: ${nftError.message}`,
+          });
+        }
+      }
+
+      // ---- Land: Transferable Deed NFT ----
+      if (sector === "land") {
+        try {
+          setStatus({ type: "info", msg: "🏠 Minting Land Deed NFT..." });
+
+          const nftMetadata = {
+            name: `Land Deed ${form.certId} - ${form.studentName}`,
+            description: `Blockchain-verified land deed. Transferable. Deed ID: ${form.certId}`,
+            image: `ipfs://${ipfsHash}`,
+            attributes: [
+              { trait_type: "Type", value: "Transferable Land Deed" },
+              { trait_type: "Owner Name", value: form.studentName },
+              { trait_type: "Deed Type", value: form.idType },
+              { trait_type: "Property Address", value: form.propertyAddress },
+              { trait_type: "Issue Date", value: new Date().toISOString().split("T")[0] },
+              { trait_type: "Deed ID", value: form.certId },
+              { trait_type: "PDF", value: `ipfs://${ipfsHash}` },
+            ],
+          };
+
+          nftMetadataURI = await uploadJSONToIPFS(nftMetadata, `${form.certId}-land-metadata.json`);
+          nftTxHash = await mintLandDeedNFT(form.wallet, form.certId, nftMetadataURI);
+          try {
+            nftTokenId = await getLandDeedTokenIdByDeedId(form.certId);
+          } catch {
+            nftTokenId = "?";
+          }
+          nftKind = "land";
+        } catch (nftError) {
+          console.error("Land NFT minting failed:", nftError);
+          setStatus({
+            type: "info",
+            msg: `✅ Land record issued, but deed NFT minting failed: ${nftError.message}`,
+          });
+        }
+      }
+
+      // ---- Healthcare: Soulbound + Access Control ----
+      if (sector === "healthcare") {
+        try {
+          setStatus({ type: "info", msg: "🏥 Minting Health Record NFT..." });
+
+          const nftMetadata = {
+            name: `${form.idType} - ${form.studentName}`,
+            description: `Blockchain-verified medical record. Soulbound. Access is patient-controlled.`,
+            image: `ipfs://${ipfsHash}`,
+            attributes: [
+              { trait_type: "Type", value: "Soulbound Health Record" },
+              { trait_type: "Patient Name", value: form.studentName },
+              { trait_type: "Record Type", value: form.idType },
+              { trait_type: "Doctor / Hospital", value: form.doctorName || "N/A" },
+              { trait_type: "Issue Date", value: new Date().toISOString().split("T")[0] },
+              { trait_type: "Record ID", value: form.certId },
+              { trait_type: "PDF", value: `ipfs://${ipfsHash}` },
+            ],
+          };
+
+          nftMetadataURI = await uploadJSONToIPFS(nftMetadata, `${form.certId}-health-metadata.json`);
+          nftTxHash = await mintHealthRecordNFT(form.wallet, form.certId, nftMetadataURI);
+          try {
+            nftTokenId = await getHealthTokenIdByRecordId(form.certId);
+          } catch {
+            nftTokenId = "?";
+          }
+          nftKind = "health";
+        } catch (nftError) {
+          console.error("Health NFT minting failed:", nftError);
+          setStatus({
+            type: "info",
+            msg: `✅ Health record issued, but NFT minting failed: ${nftError.message}`,
+          });
+        }
+      }
+
+      setLastCert({
+        ...form,
+        ipfsHash,
+        txHash,
+        sector,
+        nftTokenId,
+        nftTxHash,
+        nftMetadataURI,
+        nftKind,
       });
+
+      let successMsg = `✅ ${config.name} record issued successfully!`;
+      if (nftTokenId && nftKind === "soulbound") {
+        successMsg = `✅ Certificate issued + Soulbound NFT #${nftTokenId} minted!`;
+      } else if (nftTokenId && nftKind === "land") {
+        successMsg = `✅ Land record issued + Transferable Deed NFT #${nftTokenId} minted!`;
+      } else if (nftTokenId && nftKind === "health") {
+        successMsg = `✅ Health record issued + Soulbound NFT #${nftTokenId} minted (patient controls access)!`;
+      }
+      setStatus({ type: "success", msg: successMsg });
+
       setForm({
         certId: "",
         studentName: "",
@@ -238,6 +377,9 @@ export default function University() {
         </h1>
         <p className="text-lg text-slate-600">
           Fill the details — record will be stored on blockchain + IPFS
+          {sector === "education" && " + Soulbound NFT"}
+          {sector === "land" && " + Transferable Deed NFT"}
+          {sector === "healthcare" && " + Soulbound Health NFT (patient controls access)"}
         </p>
       </div>
 
@@ -279,6 +421,11 @@ export default function University() {
               className="input-field"
               disabled={loading}
             />
+            {field.isWallet && (
+              <p className="text-xs text-slate-500 mt-1">
+                Enter the holder's wallet address (the person who will receive this record)
+              </p>
+            )}
           </div>
         ))}
 
@@ -339,6 +486,73 @@ export default function University() {
                 <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">Transaction</div>
                 <div className="font-mono text-xs text-indigo-600 break-all">{lastCert.txHash}</div>
               </div>
+            )}
+
+            {lastCert.nftTokenId && (
+              <>
+                <div
+                  className={`rounded-lg p-3 border md:col-span-2 ${
+                    lastCert.nftKind === "land"
+                      ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200"
+                      : lastCert.nftKind === "health"
+                      ? "bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200"
+                      : "bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">
+                      {lastCert.nftKind === "land"
+                        ? "🏠"
+                        : lastCert.nftKind === "health"
+                        ? "🏥"
+                        : "🎨"}
+                    </span>
+                    <div
+                      className={`text-xs uppercase tracking-wider font-bold ${
+                        lastCert.nftKind === "land"
+                          ? "text-amber-700"
+                          : lastCert.nftKind === "health"
+                          ? "text-emerald-700"
+                          : "text-purple-700"
+                      }`}
+                    >
+                      {lastCert.nftKind === "land"
+                        ? "Transferable Deed NFT Minted"
+                        : lastCert.nftKind === "health"
+                        ? "Soulbound Health NFT Minted"
+                        : "Soulbound NFT Minted"}
+                    </div>
+                  </div>
+                  <div
+                    className={`font-semibold text-base ${
+                      lastCert.nftKind === "land"
+                        ? "text-amber-900"
+                        : lastCert.nftKind === "health"
+                        ? "text-emerald-900"
+                        : "text-purple-900"
+                    }`}
+                  >
+                    Token ID #{lastCert.nftTokenId}
+                  </div>
+                  {lastCert.nftKind === "health" && (
+                    <p className="text-xs text-emerald-800 mt-1">
+                      🔐 Patient controls access — grant/revoke from Student page.
+                    </p>
+                  )}
+                </div>
+                {lastCert.nftMetadataURI && (
+                  <div className="bg-white rounded-lg p-3 border border-slate-100 md:col-span-2">
+                    <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">NFT Metadata URI</div>
+                    <div className="font-mono text-xs text-slate-600 break-all">{lastCert.nftMetadataURI}</div>
+                  </div>
+                )}
+                {lastCert.nftTxHash && (
+                  <div className="bg-white rounded-lg p-3 border border-slate-100 md:col-span-2">
+                    <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">NFT Transaction</div>
+                    <div className="font-mono text-xs text-slate-600 break-all">{lastCert.nftTxHash}</div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

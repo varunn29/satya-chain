@@ -3,7 +3,10 @@ import { Link } from "react-router-dom";
 import { SECTORS, SECTOR_COLORS } from "../data/sectorsData";
 import SectorTabs from "../components/SectorTabs";
 import SectorStats from "../components/SectorStats";
-import { getReadOnlyContract } from "../utils/contractHelper";
+import {
+  getReadOnlyContract,
+  getTotalNFTsMinted,
+} from "../utils/contractHelper";
 
 // ============================================
 // Fetch real records from blockchain
@@ -99,11 +102,22 @@ async function fetchRealStats(sectorKey) {
       revoked = 0;
     }
 
-    return {
+    const stats = {
       total,
       verified: total - revoked,
       revoked,
     };
+
+    // For education only: add NFT count
+    if (sectorKey === "education") {
+      try {
+        stats.nftCount = await getTotalNFTsMinted();
+      } catch {
+        stats.nftCount = 0;
+      }
+    }
+
+    return stats;
   } catch (err) {
     console.warn(`Stats error for ${sectorKey}:`, err.message);
     return { total: 0, verified: 0, revoked: 0 };

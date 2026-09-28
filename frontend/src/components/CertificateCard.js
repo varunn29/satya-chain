@@ -1,8 +1,17 @@
 export default function CertificateCard({ cert, onDownload, onViewIPFS }) {
+  const hasNFT = cert.nftTokenId != null && cert.nftTokenId > 0;
+
   return (
-    <div className="card hover:shadow-lg transition">
+    <div className="card hover:shadow-lg transition relative overflow-hidden">
+      {/* Soulbound ribbon (only if NFT minted) */}
+      {hasNFT && (
+        <div className="absolute top-0 right-0 bg-gradient-to-r from-purple-500 to-indigo-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg tracking-wider">
+          🎨 SOULBOUND NFT #{cert.nftTokenId}
+        </div>
+      )}
+
       <div className="flex justify-between items-start mb-4">
-        <div>
+        <div className="pr-20">
           <h3 className="text-xl font-bold text-blue-900">
             {cert.studentName}
           </h3>
@@ -26,6 +35,11 @@ export default function CertificateCard({ cert, onDownload, onViewIPFS }) {
         <p>
           <strong>Date:</strong> {cert.issueDate}
         </p>
+        {hasNFT && (
+          <p className="text-purple-700">
+            <strong>NFT Token:</strong> #{cert.nftTokenId} · locked 🔒
+          </p>
+        )}
       </div>
 
       <div className="flex gap-2">

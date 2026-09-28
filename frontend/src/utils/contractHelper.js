@@ -157,7 +157,7 @@ export async function getCertificatesByStudent(studentAddress) {
 }
 
 // ============================================
-// GOVERNMENT — ISSUE / VERIFY
+// GOVERNMENT — ISSUE / VERIFY / BY WALLET
 // ============================================
 
 export async function issueGovernmentID(
@@ -169,12 +169,14 @@ export async function issueGovernmentID(
 ) {
   try {
     const contract = await getContract("government");
+    // Store lowercase to normalize — because MetaMask returns lowercase
+    const normalized = holderWallet.toLowerCase();
     const tx = await contract.issue(
       id,
       idType,
       holderName,
       ipfsHash,
-      holderWallet
+      normalized
     );
     await tx.wait();
     return tx.hash;
@@ -199,6 +201,53 @@ export async function verifyGovernmentID(id) {
     };
   } catch (error) {
     throw new Error(`Failed to verify ID: ${getErrorMessage(error)}`);
+  }
+}
+
+/**
+ * @notice Get all government credentials issued to a wallet.
+ *         Lowercases the input to match how issueGovernmentID stores it.
+ */
+export async function getGovernmentRecordsByWallet(walletAddress) {
+  try {
+    const normalized = walletAddress.toLowerCase();
+    console.log("[getGovernmentRecordsByWallet] looking up:", normalized);
+
+    const contract = await getReadOnlyContract("government");
+    const ids = await contract.getRecordsByWallet(normalized);
+    console.log("[getGovernmentRecordsByWallet] ids:", ids);
+
+    if (!ids || ids.length === 0) return [];
+
+    const results = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const rec = await contract.verify(id);
+          return {
+            id,
+            holderName: rec[0],
+            idType: rec[1],
+            ipfsHash: rec[2],
+            issueDate: new Date(Number(rec[3]) * 1000).toLocaleDateString(
+              "en-IN",
+              { year: "numeric", month: "long", day: "numeric" }
+            ),
+            isValid: rec[4],
+          };
+        } catch (innerErr) {
+          console.error(
+            `[getGovernmentRecordsByWallet] verify(${id}) failed:`,
+            innerErr
+          );
+          return null;
+        }
+      })
+    );
+
+    return results.filter(Boolean);
+  } catch (error) {
+    console.error("[getGovernmentRecordsByWallet] FAILED:", error);
+    return [];
   }
 }
 
@@ -409,5 +458,219 @@ export async function getSectorStats(sector) {
   } catch (error) {
     console.warn(`Stats error for ${sector}:`, error.message);
     return { total: 0, verified: 0, revoked: 0 };
+  }
+}
+
+// ============================================
+// NFT — SOULBOUND CERTIFICATES (Education)
+// ============================================
+
+export async function mintCertificateNFT(studentWallet, certId, metadataURI) {
+  try {
+    const contract = await getContract("nft");
+    const tx = await contract.mintCertificate(studentWallet, certId, metadataURI);
+    await tx.wait();
+    return tx.hash;
+  } catch (error) {
+    throw new Error(`Failed to mint NFT: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function getNFTTokenIdByCertId(certId) {
+  try {
+    const contract = await getReadOnlyContract("nft");
+    const tokenId = await contract.certIdToToken(certId);
+    return Number(tokenId);
+  } catch (error) {
+    throw new Error(`Failed to lookup NFT: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function getNFTMetadata(tokenId) {
+  try {
+    const contract = await getReadOnlyContract("nft");
+    const uri = await contract.tokenURI(tokenId);
+    const owner = await contract.ownerOf(tokenId);
+    const isLocked = await contract.locked(tokenId);
+    return { tokenId, uri, owner, isLocked };
+  } catch (error) {
+    throw new Error(`Failed to fetch NFT: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function getTotalNFTsMinted() {
+  try {
+    const contract = await getReadOnlyContract("nft");
+    return Number(await contract.totalMinted());
+  } catch (error) {
+    console.warn("NFT totalMinted error:", error.message);
+    return 0;
+  }
+}
+
+// ============================================
+// NFT — LAND DEEDS (Transferable, Enumerable)
+// ============================================
+
+export async function mintLandDeedNFT(ownerWallet, deedId, metadataURI) {
+  try {
+    const contract = await getContract("landNft");
+    const tx = await contract.mintDeed(ownerWallet, deedId, metadataURI);
+    await tx.wait();
+    return tx.hash;
+  } catch (error) {
+    throw new Error(`Failed to mint land deed: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function getLandDeedTokenIdByDeedId(deedId) {
+  try {
+    const contract = await getReadOnlyContract("landNft");
+    const tokenId = await contract.deedIdToToken(deedId);
+    return Number(tokenId);
+  } catch (error) {
+    throw new Error(`Failed to lookup land deed: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function getLandDeedMetadata(tokenId) {
+  try {
+    const contract = await getReadOnlyContract("landNft");
+    const uri = await contract.tokenURI(tokenId);
+    const owner = await contract.ownerOf(tokenId);
+    const transfers = Number(await contract.transferCount(tokenId));
+    return { tokenId, uri, owner, transfers };
+  } catch (error) {
+    throw new Error(`Failed to fetch land deed: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function getTotalLandDeedsMinted() {
+  try {
+    const contract = await getReadOnlyContract("landNft");
+    return Number(await contract.totalMinted());
+  } catch (error) {
+    console.warn("Land NFT totalMinted error:", error.message);
+    return 0;
+  }
+}
+
+export async function transferLandDeed(toAddress, tokenId) {
+  try {
+    const contract = await getContract("landNft");
+    const signerAddress = await contract.runner.getAddress();
+    const tx = await contract.transferFrom(signerAddress, toAddress, tokenId);
+    await tx.wait();
+    return tx.hash;
+  } catch (error) {
+    throw new Error(`Failed to transfer land deed: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function getLandDeedsByOwner(ownerAddress) {
+  try {
+    const contract = await getReadOnlyContract("landNft");
+    const balance = Number(await contract.balanceOf(ownerAddress));
+
+    const deeds = [];
+    for (let i = 0; i < balance; i++) {
+      const tokenId = Number(
+        await contract.tokenOfOwnerByIndex(ownerAddress, i)
+      );
+      const uri = await contract.tokenURI(tokenId);
+      const transfers = Number(await contract.transferCount(tokenId));
+      deeds.push({ tokenId, uri, transfers });
+    }
+    return deeds;
+  } catch (error) {
+    console.warn("getLandDeedsByOwner error:", error.message);
+    return [];
+  }
+}
+
+// ============================================
+// NFT — HEALTH RECORDS (Soulbound + Access Control)
+// ============================================
+
+export async function mintHealthRecordNFT(patientWallet, recordId, metadataURI) {
+  try {
+    const contract = await getContract("healthNft");
+    const tx = await contract.mintRecord(patientWallet, recordId, metadataURI);
+    await tx.wait();
+    return tx.hash;
+  } catch (error) {
+    throw new Error(`Failed to mint health record NFT: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function getHealthTokenIdByRecordId(recordId) {
+  try {
+    const contract = await getReadOnlyContract("healthNft");
+    const tokenId = await contract.recordIdToToken(recordId);
+    return Number(tokenId);
+  } catch (error) {
+    throw new Error(`Failed to lookup health record: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function getHealthRecordsByOwner(ownerAddress) {
+  try {
+    const contract = await getReadOnlyContract("healthNft");
+    const balance = Number(await contract.balanceOf(ownerAddress));
+
+    const records = [];
+    for (let i = 0; i < balance; i++) {
+      const tokenId = Number(
+        await contract.tokenOfOwnerByIndex(ownerAddress, i)
+      );
+      const uri = await contract.tokenURI(tokenId);
+      records.push({ tokenId, uri });
+    }
+    return records;
+  } catch (error) {
+    console.warn("getHealthRecordsByOwner error:", error.message);
+    return [];
+  }
+}
+
+export async function grantHealthAccess(tokenId, doctorAddress) {
+  try {
+    const contract = await getContract("healthNft");
+    const tx = await contract.grantAccess(tokenId, doctorAddress);
+    await tx.wait();
+    return tx.hash;
+  } catch (error) {
+    throw new Error(`Failed to grant access: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function revokeHealthAccess(tokenId, doctorAddress) {
+  try {
+    const contract = await getContract("healthNft");
+    const tx = await contract.revokeAccess(tokenId, doctorAddress);
+    await tx.wait();
+    return tx.hash;
+  } catch (error) {
+    throw new Error(`Failed to revoke access: ${getErrorMessage(error)}`);
+  }
+}
+
+export async function checkHealthAccess(tokenId, doctorAddress) {
+  try {
+    const contract = await getReadOnlyContract("healthNft");
+    return await contract.hasAccess(tokenId, doctorAddress);
+  } catch (error) {
+    console.warn("checkHealthAccess error:", error.message);
+    return false;
+  }
+}
+
+export async function getTotalHealthRecordsMinted() {
+  try {
+    const contract = await getReadOnlyContract("healthNft");
+    return Number(await contract.totalMinted());
+  } catch (error) {
+    console.warn("Health NFT totalMinted error:", error.message);
+    return 0;
   }
 }
